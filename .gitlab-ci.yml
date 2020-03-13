@@ -1,79 +1,112 @@
 before_script:
-  - echo "Before script section"
+  - echo "Do before script"
 
 after_script:
-  - echo "After script section"
+  - echo "Do after script"
 
 stages:
+  - set_custom_ci_variable
+  - testing
   - build
-  - test
   - deploy
 
-build1:
-  stage: build
-  script:
-    - echo "Do your build here"
-
-test1:
-  stage: test
-  script:
-    - echo "Do a test here"
-    - echo "For example run a test suite"
-
-test2:
-  stage: test
-  script:
-    - echo "Do another parallel test here"
-    - echo "For example run a lint test"
-
-test3:
-  stage: test
+set_custom_ci_variable:
+  stage: set_custom_ci_variable
+  tags:
+    - basic
+  only:
+    - develop
+    - master
   script:
     - |
-      echo "CI_JOB_ID: ${CI_JOB_ID}"
-      echo "CI_COMMIT_SHA: ${CI_COMMIT_SHA}"
-      echo "CI_COMMIT_SHORT_SHA: ${CI_COMMIT_SHORT_SHA}"
-      echo "CI_COMMIT_REF_NAME: ${CI_COMMIT_REF_NAME}"
-      echo "CI_REPOSITORY_URL: ${CI_REPOSITORY_URL}"
-      echo "CI_COMMIT_TAG: ${CI_COMMIT_TAG}"
-      echo "CI_JOB_NAME: ${CI_JOB_NAME}"
-      echo "CI_JOB_STAGE: ${CI_JOB_STAGE}"
-      echo "CI_JOB_MANUAL: ${CI_JOB_MANUAL}"
-      echo "CI_JOB_TRIGGERED: ${CI_JOB_TRIGGERED}"
-      echo "CI_JOB_TOKEN: ${CI_JOB_TOKEN}"
-      echo "CI_PIPELINE_ID: ${CI_PIPELINE_ID}"
-      echo "CI_PIPELINE_IID: ${CI_PIPELINE_IID}"
-      echo "CI_PAGES_DOMAIN: ${CI_PAGES_DOMAIN}"
-      echo "CI_PAGES_URL: ${CI_PAGES_URL}"
-      echo "CI_PROJECT_ID: ${CI_PROJECT_ID}"
-      echo "CI_PROJECT_DIR: ${CI_PROJECT_DIR}"
-      echo "CI_PROJECT_NAME: ${CI_PROJECT_NAME}"
-      echo "CI_PROJECT_TITLE: ${CI_PROJECT_TITLE}"
-      echo "CI_PROJECT_NAMESPACE: ${CI_PROJECT_NAMESPACE}"
-      echo "CI_PROJECT_PATH: ${CI_PROJECT_PATH}"
-      echo "CI_PROJECT_URL: ${CI_PROJECT_URL}"
-      echo "CI_REGISTRY: ${CI_REGISTRY}"
-      echo "CI_REGISTRY_IMAGE: ${CI_REGISTRY_IMAGE}"
-      echo "CI_REGISTRY_USER: ${CI_REGISTRY_USER}"
-      echo "CI_REGISTRY_PASSWORD: ${CI_REGISTRY_PASSWORD}"
-      echo "CI_RUNNER_ID: ${CI_RUNNER_ID}"
-      echo "CI_RUNNER_DESCRIPTION: ${CI_RUNNER_DESCRIPTION}"
-      echo "CI_RUNNER_TAGS: ${CI_RUNNER_TAGS}"
-      echo "CI_SERVER: ${CI_SERVER}"
-      echo "CI_SERVER_URL: ${CI_SERVER_URL}"
-      echo "CI_SERVER_HOST: ${CI_SERVER_HOST}"
-      echo "CI_SERVER_PORT: ${CI_SERVER_PORT}"
-      echo "CI_SERVER_PROTOCOL: ${CI_SERVER_PROTOCOL}"
-      echo "CI_SERVER_NAME: ${CI_SERVER_NAME}"
-      echo "CI_SERVER_REVISION: ${CI_SERVER_REVISION}"
-      echo "CI_SERVER_VERSION: ${CI_SERVER_VERSION}"
-      echo "CI_SERVER_VERSION_MAJOR: ${CI_SERVER_VERSION_MAJOR}"
-      echo "CI_SERVER_VERSION_MINOR: ${CI_SERVER_VERSION_MINOR}"
-      echo "CI_SERVER_VERSION_PATCH: ${CI_SERVER_VERSION_PATCH}"
-      echo "GITLAB_USER_EMAIL: ${GITLAB_USER_EMAIL}"
-      echo "GITLAB_USER_ID: ${GITLAB_USER_ID}"
+      # declare variable
+      ACCESS_TOKEN="${CI_ACCESS_TOKEN}"
+      HEADER="PRIVATE-TOKEN: ${ACCESS_TOKEN}"
+      OUTPUT_PATH="./variables"
+      ENV=($(cat .env.ci))
+      KEY="${CI_COMMIT_REF_NAME}_ENV"
+      VALUE=""
+      API_VERSION="v4"
+      API_URL="${CI_SERVER_URL}/api/${API_VERSION}"
+      PROJECT_ID="${CI_PROJECT_ID}"
+      UPDATE=false
+    - |
+      # declare function
+      process_value() {
+        for value in ${ENV[@]} ; do
+          VALUE+="${value}
+      "
+        done
+      }
+      fetch_project_variables() {
+        echo $FUNCNAME
+        curl --request GET "${API_URL}/projects/${PROJECT_ID}/variables" \
+          --header "${HEADER}" \
+          --output "${OUTPUT_PATH}";
+      }
+      create_or_update_ci_variable() {
+        echo $FUNCNAME
+        for i in ${!VARIABLE_KEY_SET[@]}; do
+          if [[ ${VARIABLE_KEY_SET[$i]} == $1 ]]; then
+            UPDATE=true
+            break
+          fi
+        done
+      }
+      create_ci_variable() {
+        echo $FUNCNAME
+        curl --request POST "${API_URL}/projects/${PROJECT_ID}/variables" \
+          --header "${HEADER}" \
+          --form "key=$1" \
+          --form "value=${VALUE}"
+      }
+      update_ci_variable() {
+        echo $FUNCNAME
+        curl --request PUT "${API_URL}/projects/${PROJECT_ID}/variables/$1" \
+          --header "${HEADER}" \
+          --form "value=${VALUE}"
+      }
+    - |
+      # main
+      process_value
 
-deploy1:
+      fetch_project_variables
+
+      VARIABLE_KEY_SET=(
+        $(jq --raw-output '.[].key' ${OUTPUT_PATH})
+      )
+
+      create_or_update_ci_variable ${KEY}
+
+      if [[ ${UPDATE} = true ]]; then
+        update_ci_variable ${KEY}
+      else
+        create_ci_variable ${KEY}
+      fi
+
+      rm ${OUTPUT_PATH}
+
+test_frontend_install:
+  stage: testing
+  script:
+    - echo "Do test frontend install"
+
+test_backend_install:
+  stage: testing
+  script:
+    - echo "Do test backend install"
+
+build_frontend:
+  stage: build
+  script:
+    - echo "Do build frontend"
+
+build_backend:
+  stage: build
+  script:
+    - echo "Do build backend"
+
+deploy:
   stage: deploy
   script:
-    - echo "Do your deploy here"
+    - echo "Do deploy"
